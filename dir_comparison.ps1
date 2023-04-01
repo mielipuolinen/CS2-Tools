@@ -3,9 +3,9 @@
 # For: Research, debug and reverse engineering purposes.
 # Requires: -
 
-$sourceDir = "D:\CS2-Repo\CS2-build240323"
-$targetDir = "D:\CS2-Repo\CS2-build300323"
-$threads = 16 # only hash calculation split into jobs
+$sourceDir = "D:\CS2-Repo\CS2-no_vpk-build240323"
+$targetDir = "D:\CS2-Repo\CS2-no_vpk-build300323"
+$threads = 32 # only hash calculation split into jobs
 
 $startTime = Get-Date
 
@@ -25,99 +25,227 @@ Write-Host "`tItems in sourceDir: $($sourceItemList.Count)"
 $targetItemList = Get-ChildItem -Path $targetDir -File -Recurse
 Write-Host "`tItems in targetDir: $($targetItemList.Count)"
 
-function Calculate-FileHashes{
-    param( $itemList )
+$initialSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+$runspacePool = [runspacefactory]::CreateRunspacePool(1, $threads, $initialSessionState, $Host)
+$runspacePool.Open()
 
-    $itemStackSizePerJob = [math]::Round( $itemList.Count / $threads )
+Write-Host "Calculating file hashes." -ForegroundColor Green
+$higherItemCount = [math]::Max($sourceItemList.Count, $targetItemList.Count)
+$chunkSize = [math]::Ceiling($higherItemCount / $threads)
+$jobList = New-Object System.Collections.ArrayList
+for($i = 0; $i -lt $threads; $i++){
+    $startIndex = $i * $chunkSize
+    $endIndex_sourceItems = [math]::Min($startIndex + $chunkSize - 1, $sourceItemList.Count - 1)
+    $endIndex_targetItems = [math]::Min($startIndex + $chunkSize - 1, $targetItemList.Count - 1)
 
-    $processedFileCount = 0
-    $job_list = New-Object System.Collections.ArrayList
+    ## Check if unprocessed source items left
+    if($startIndex -le $endIndex_sourceItems){
+        $sourceItemListChunk = $sourceItemList[$startIndex..$endIndex_sourceItems]
+    }else{
+        $sourceItemListChunk = $false
+    }
 
-    while($processedFileCount -lt $itemList.Count){
+    # Check if unprocessed target items left
+    if($startIndex -le $endIndex_targetItems){
+        $targetItemListChunk = $targetItemList[$startIndex..$endIndex_targetItems]
+    }else{
+        $targetItemListChunk = $false
+    }
 
-        $countDifference = $itemList.Count - $processedFileCount
-        if($countDifference -gt $itemStackSizePerJob){
-            $itemStackSize = $itemStackSizePerJob
-        }else{
-            $itemStackSize = $countDifference
+    $job = [powershell]::Create().AddScript({
+        param($sourceItemListChunk, $targetItemListChunk)
+
+        $results = New-Object PSObject -Property @{
+            SourceItemHashList = New-Object System.Collections.ArrayList
+            TargetItemHashList = New-Object System.Collections.ArrayList
         }
 
-        $index_start = $processedFileCount
-        $index_end = $index_start + $itemStackSizePerJob - 1
-        $itemStackForJob = $itemList[$index_start .. $index_end]
-        $job_list.Add($(Start-Job -ScriptBlock { $using:itemStackForJob | Get-FileHash })) | Out-Null
+        if($sourceItemListChunk){
+            foreach($sourceItem in $sourceItemListChunk){
+                $results.SourceItemHashList.Add(( $sourceItem | Get-FileHash ))
+            }
+        }
+        
+        if($targetItemListChunk){
+            foreach($targetItem in $targetItemListChunk){
+                $results.TargetItemHashList.Add(( $targetItem | Get-FileHash ))
+            }
+        }
 
-        $processedFileCount += $itemStackSize
+        return $results
+    }).AddArgument($sourceItemListChunk).AddArgument($targetItemListChunk)
 
-    }
-
-
-    $itemHashes = New-Object System.Collections.ArrayList
-
-    ForEach($job in $job_list){
-        $result = Receive-Job -Job $job -Wait -AutoRemoveJob
-        $itemHashes += $result | Select-Object -Property Path,Hash
-    }
-
-    Write-Output $itemHashes
+    $job.RunspacePool = $runspacePool
+    $jobList.Add(@{ Job = $job; Handle = $job.BeginInvoke() }) | Out-Null
 }
 
-Write-Host "Calculating source file hashes." -ForegroundColor Green
-$sourceItemHashList = Calculate-FileHashes -itemList $sourceItemList
-Write-Host "Calculating target file hashes." -ForegroundColor Green
-$targetItemHashList = Calculate-FileHashes -itemList $targetItemList
+$sourceItemHashList = New-Object System.Collections.ArrayList
+$targetItemHashList = New-Object System.Collections.ArrayList
+
+foreach($job in $jobList){
+    $results = $job.Job.EndInvoke($job.Handle)
+
+    if($results.SourceItemHashList.Count -gt 0){
+        foreach($sourceItemHash_PSCustomObject in $results.SourceItemHashList){
+            $sourceItemHash = @{
+                Path = $sourceItemHash_PSCustomObject.Path
+                Hash = $sourceItemHash_PSCustomObject.Hash
+            }
+            $sourceItemHashList.Add($sourceItemHash) | Out-Null
+        }
+    }
+
+    if($results.TargetItemHashList.Count -gt 0){
+        foreach($targetItemHash_PSCustomObject in $results.TargetItemHashList){
+            $targetItemHash = @{
+                Path = $targetItemHash_PSCustomObject.Path
+                Hash = $targetItemHash_PSCustomObject.Hash
+            }
+            $targetItemHashList.Add($targetItemHash) | Out-Null
+        }
+    }
+
+    $job.Job.Dispose()
+}
+
 
 Write-Host "Unifying file paths for hash comparison." -ForegroundColor Green
-ForEach($item in $sourceItemHashList){
+foreach($item in $sourceItemHashList){
     $item.Path = $item.Path -replace [regex]::escape($sourceDir),""
 }
-ForEach($item in $targetItemHashList){
+foreach($item in $targetItemHashList){
     $item.Path = $item.Path -replace [regex]::escape($targetDir),""
 }
 
 Write-Host "Processing files." -ForegroundColor Green
+
+Write-Host "`tStep 1/2"
+$chunkSize = [math]::Ceiling($sourceItemHashList.Count / $threads)
+$jobList = New-Object System.Collections.ArrayList
+
+for($i = 0; $i -lt $threads; $i++){
+    $startIndex = $i * $chunkSize
+    $endIndex = [math]::Min($startIndex + $chunkSize - 1, $sourceItemHashList.Count - 1)
+    $sourceItemHashListChunk = $sourceItemHashList[$startIndex..$endIndex]
+
+    $job = [powershell]::Create().AddScript({
+        param($sourceItemHashListChunk, $targetItemHashList)
+
+        $results = New-Object PSObject -Property @{
+            Unaltered = New-Object System.Collections.ArrayList
+            Altered   = New-Object System.Collections.ArrayList
+            Removed   = New-Object System.Collections.ArrayList
+        }
+
+        foreach($sourceItem in $sourceItemHashListChunk){
+            $foundMatchingName = $false
+
+            foreach($targetItem in $targetItemHashList){
+                if($sourceItem.Path -eq $targetItem.Path){
+                    $foundMatchingName = $true
+                    break
+                }
+            }
+
+            if($foundMatchingName){
+                if($sourceItem.Hash -eq $targetItem.Hash) {
+                    $results.Unaltered.Add($sourceItem.Path) | Out-Null
+                }else{
+                    $results.Altered.Add($sourceItem.Path) | Out-Null
+                }
+            }else{
+                $results.Removed.Add($sourceItem.Path) | Out-Null
+            }
+        }
+
+        return $results
+    }).AddArgument($sourceItemHashListChunk).AddArgument($targetItemHashList)
+
+    $job.RunspacePool = $runspacePool
+    $jobList.Add(@{ Job = $job; Handle = $job.BeginInvoke() }) | Out-Null
+}
+
 $unalteredItems = New-Object System.Collections.ArrayList # hash match
 $alteredItems   = New-Object System.Collections.ArrayList # hash mismatch
 $removedItems   = New-Object System.Collections.ArrayList # only in sourceDir
 $newItems       = New-Object System.Collections.ArrayList # only in targetDir
 
-Write-Host "`tStep 1/2"
-ForEach($sourceItem in $sourceItemHashList){
+foreach ($job in $jobList) {
+    $results = $job.Job.EndInvoke($job.Handle)
 
-    $foundMatchingName = $false
-
-    ForEach($targetItem in $targetItemHashList){
-        if($sourceItem.Path -eq $targetItem.Path){
-            $foundMatchingName = $true
-            break
-        }
+    if($results.Unaltered.Count -eq 1){
+        $unalteredItems.Add($results.Unaltered) | Out-Null
+    }elseif($results.Unaltered.Count -gt 1){
+        $unalteredItems.AddRange($results.Unaltered) | Out-Null
     }
 
-    if($foundMatchingName){
-        if($sourceItem.Hash -eq $targetItem.Hash){
-            $unalteredItems.Add($sourceItem.Path) | Out-Null
-        }else{
-            $alteredItems.Add($sourceItem.Path) | Out-Null
-        }
-    }else{
-        $removedItems.Add($sourceItem.Path) | Out-Null
+    if($results.Altered.Count -eq 1){
+        $alteredItems.Add($results.Altered) | Out-Null
+    }elseif($results.Altered.Count -gt 1){
+        $alteredItems.AddRange($results.Altered) | Out-Null
     }
 
+    if($results.Removed.Count -eq 1){
+        $removedItems.Add($results.Removed) | Out-Null
+    }elseif($results.Removed.Count -gt 1){
+        $removedItems.AddRange($results.Removed) | Out-Null
+    }
+
+    $job.Job.Dispose()
 }
-
 
 Write-Host "`tStep 2/2"
-ForEach($targetItem in $targetItemHashList){
-    if($unalteredItems.Contains($targetItem.Path)){
-        continue
-    }elseif($alteredItems.Contains($targetItem.Path)){
-        continue
-    }elseif($removedItems.Contains($targetItem.Path)){
-        continue
-    }else{
-        $newItems.Add($targetItem.Path) | Out-Null
-    }
+$chunkSize = [math]::Ceiling($targetItemHashList.Count / $threads)
+$jobList = New-Object System.Collections.ArrayList
+
+for($i = 0; $i -lt $threads; $i++){
+    $startIndex = $i * $chunkSize
+    $endIndex = [math]::Min($startIndex + $chunkSize - 1, $targetItemHashList.Count - 1)
+    $targetItemHashListChunk = $targetItemHashList[$startIndex..$endIndex]
+
+    $job = [powershell]::Create().AddScript({
+        param($targetItemHashListChunk, $unalteredItems, $alteredItems, $removedItems)
+
+        $results = New-Object PSObject -Property @{
+            NewItem = New-Object System.Collections.ArrayList
+        }
+
+        foreach($targetItem in $targetItemHashListChunk){
+
+            if($unalteredItems.Contains($targetItem.Path)){
+                continue
+            }elseif($alteredItems.Contains($targetItem.Path)){
+                continue
+            }elseif($removedItems.Contains($targetItem.Path)){
+                continue
+            }else{
+                $results.NewItem.Add($targetItem.Path) | Out-Null
+            }
+
+        }
+
+        return $results
+    }).AddArgument($targetItemHashListChunk).AddArgument($unalteredItems).AddArgument($alteredItems).AddArgument($removedItems)
+
+    $job.RunspacePool = $runspacePool
+    $jobList.Add(@{ Job = $job; Handle = $job.BeginInvoke() }) | Out-Null
 }
+
+foreach ($job in $jobList) {
+    $results = $job.Job.EndInvoke($job.Handle)
+
+    if($results.NewItem.Count -eq 1){
+        $newItems.Add($results.NewItem) | Out-Null
+    }elseif($results.NewItem.Count -gt 1){
+        $newItems.AddRange($results.NewItem)
+    }
+
+    $job.Job.Dispose()
+}
+
+$runspacePool.Close()
+$runspacePool.Dispose()
+
 
 Write-Host "Outputting results." -ForegroundColor Green
 Write-Host ""
@@ -142,10 +270,10 @@ ForEach($item in $newItems){
 }
 
 Write-Host ""
-Write-Host "Items in sourceDir: $($sourceItemList.Count)"
-Write-Host "Items in targetDir: $($targetItemList.Count)"
-Write-Host ""
 Write-Host "Total counts:" -ForegroundColor Green
+Write-Host "`tItems in sourceDir: $($sourceItemList.Count)"
+Write-Host "`tItems in targetDir: $($targetItemList.Count)"
+Write-Host "`t---"
 Write-Host "`tUnaltered Items (hash match): $($unalteredItems.Count)"
 Write-Host "`tAltered Items (hash mismatch): $($alteredItems.Count)"
 Write-Host "`tRemoved Items (only in sourceDir): $($removedItems.Count)"
