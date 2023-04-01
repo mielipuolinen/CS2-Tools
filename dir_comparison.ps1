@@ -2,10 +2,19 @@
 # Why: Helps finding differences between given directories
 # For: Research, debug and reverse engineering purposes.
 # Requires: -
+# Note: Heavy memory usage (200k files, 32 threads, 10GB memory)
 
 $sourceDir = "D:\CS2-Repo\CS2-no_vpk-build240323"
 $targetDir = "D:\CS2-Repo\CS2-no_vpk-build300323"
-$threads = 32 # only hash calculation split into jobs
+$threads = 32 # more threads for more files (8t is faster than 16t for 4k files, 32t is faster than 8t for 200k files)
+
+$export = $true
+$scriptFileName = $MyInvocation.MyCommand.Name.TrimEnd(".ps1")
+$timestamp = Get-Date -Format "ddMMyy-hhmmss"
+$export_unalteredItems = "D:\CS2-Repo\$($scriptFileName).unalteredItems.$($timestamp).txt"
+$export_alteredItems = "D:\CS2-Repo\$($scriptFileName).alteredItems.$($timestamp).txt"
+$export_removedItems = "D:\CS2-Repo\$($scriptFileName).removedItems.$($timestamp).txt"
+$export_newItems = "D:\CS2-Repo\$($scriptFileName).newItems.$($timestamp).txt"
 
 $startTime = Get-Date
 
@@ -25,9 +34,15 @@ Write-Host "`tItems in sourceDir: $($sourceItemList.Count)"
 $targetItemList = Get-ChildItem -Path $targetDir -File -Recurse
 Write-Host "`tItems in targetDir: $($targetItemList.Count)"
 
+# Optimization hack: Randomize order of files and less likely have large files in same threads
+Write-Host "Optimizing: randomizing file order" -ForegroundColor Green
+$sourceItemList = $sourceItemList | Sort-Object {Get-Random}
+$targetItemList = $targetItemList | Sort-Object {Get-Random}
+
 $initialSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
 $runspacePool = [runspacefactory]::CreateRunspacePool(1, $threads, $initialSessionState, $Host)
 $runspacePool.Open()
+
 
 Write-Host "Calculating file hashes." -ForegroundColor Green
 $higherItemCount = [math]::Max($sourceItemList.Count, $targetItemList.Count)
@@ -117,11 +132,22 @@ foreach($item in $targetItemHashList){
     $item.Path = $item.Path -replace [regex]::escape($targetDir),""
 }
 
+Write-Host "Sorting file-hash arrays." -ForegroundColor Green
+$sourceItemHashList = $sourceItemHashList | Sort-Object {$_.Path}
+$targetItemHashList = $targetItemHashList | Sort-Object {$_.Path}
+
 Write-Host "Processing files." -ForegroundColor Green
 
 Write-Host "`tStep 1/2"
 $chunkSize = [math]::Ceiling($sourceItemHashList.Count / $threads)
 $jobList = New-Object System.Collections.ArrayList
+
+
+if($sourceItemHashList.Count -gt $targetItemHashList.Count){
+    $fileCountDifference = $sourceItemHashList.Count - $targetItemHashList.Count
+}else{
+    $fileCountDifference = $targetItemHashList.Count - $sourceItemHashList.Count
+}
 
 for($i = 0; $i -lt $threads; $i++){
     $startIndex = $i * $chunkSize
@@ -129,7 +155,7 @@ for($i = 0; $i -lt $threads; $i++){
     $sourceItemHashListChunk = $sourceItemHashList[$startIndex..$endIndex]
 
     $job = [powershell]::Create().AddScript({
-        param($sourceItemHashListChunk, $targetItemHashList)
+        param($sourceItemHashListChunk, $targetItemHashList, $startIndex, $endIndex, $fileCountDifference)
 
         $results = New-Object PSObject -Property @{
             Unaltered = New-Object System.Collections.ArrayList
@@ -140,7 +166,21 @@ for($i = 0; $i -lt $threads; $i++){
         foreach($sourceItem in $sourceItemHashListChunk){
             $foundMatchingName = $false
 
-            foreach($targetItem in $targetItemHashList){
+            # Optimization hack: Only loop target items that are possible matches
+
+            $targetChunk_startIndex = $startIndex - $fileCountDifference
+            if($targetChunk_startIndex -lt 0){
+                $targetChunk_startIndex = 0
+            }
+
+            $targetChunk_endIndex = $endIndex + $fileCountDifference
+            if($targetChunk_endIndex -ge $targetItemHashList.Count){
+                $targetChunk_endIndex = $targetItemHashList.Count - 1
+            }
+
+            $targetItemHashListChunk = $targetItemHashList[$targetChunk_startIndex .. $targetChunk_endIndex]
+
+            foreach($targetItem in $targetItemHashListChunk){
                 if($sourceItem.Path -eq $targetItem.Path){
                     $foundMatchingName = $true
                     break
@@ -159,7 +199,7 @@ for($i = 0; $i -lt $threads; $i++){
         }
 
         return $results
-    }).AddArgument($sourceItemHashListChunk).AddArgument($targetItemHashList)
+    }).AddArgument($sourceItemHashListChunk).AddArgument($targetItemHashList).AddArgument($startIndex).AddArgument($endIndex).AddArgument($fileCountDifference)
 
     $job.RunspacePool = $runspacePool
     $jobList.Add(@{ Job = $job; Handle = $job.BeginInvoke() }) | Out-Null
@@ -282,6 +322,14 @@ Write-Host "`tNew Items (only in targetDir): $($newItems.Count)"
 Write-Host ""
 Write-Host "Finished." -ForegroundColor Green
 Write-Host ""
+
+if($export){
+    $unalteredItems | Out-File -Append -FilePath $export_unalteredItems
+    $alteredItems | Out-File -Append -FilePath $export_alteredItems
+    $removedItems | Out-File -Append -FilePath $export_removedItems
+    $newItems | Out-File -Append -FilePath $export_newItems
+}
+
 $endTime = Get-Date
 $elapsedTime = $endTime - $startTime
 Write-Host "Script execution time $($elapsedTime)"
