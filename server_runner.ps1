@@ -1,4 +1,4 @@
-﻿# What: Little tool to keep CS2 server alive
+﻿# What: Little tool to keep CS2 server alive.
 # Why: CS2 server is not too stable.
 # For: Yes.
 # Requires: CS2
@@ -14,8 +14,8 @@ $bytes = $ip.GetAddressBytes()
 $ip_dec = [BitConverter]::ToUInt32($bytes, 0)
 
 $serverArgs = "-dedicated -usercon -console"
-$gameArgs = "+game_type 0 +game_mode 0 +map de_dust2 +hostname $hostname +sv_lan 1 +hostip $($ip_dec) +hostport $($port)"
-$customArgs = "+hostname_in_client_status true +sv_kick_players_with_cooldown 0 +rcon_password $($rcon_password)"
+$gameArgs = "+game_type 0 +game_mode 0 +map de_dust2 +hostname `"$($hostname)`" +sv_lan 1 +hostip $($ip_dec) +hostport $($port)"
+$customArgs = "+hostname_in_client_status true +sv_kick_players_with_cooldown 0 +rcon_password `"$($rcon_password)`""
 
 $processName = "cs2"
 $executablePath = "C:\cs2\bin\win64\${processName}.exe"
