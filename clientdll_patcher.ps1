@@ -3,17 +3,20 @@
 # For: Researching purposes.
 # Requires: CS2
 
-$ClientDLL_Path        = "" # ..\csgo\bin\win64\client.dll
-$ClientDLL_Backup_File = "client.backup.dll"
+$ClientDLL_DirPath     = "" # ..\csgo\bin\win64\
+$ClientDLL_Path        = "$($ClientDLL_DirPath)client.dll"
+$ClientDLL_Backup_Path = "$($ClientDLL_DirPath)client.backup.dll"
 
-[byte[]]$Signature = @( 0x70, 0xFF, 0x15, 0x0D,
-                        0xEE, 0x51, 0x00, 0x48,
-                        0x8D, 0x15, 0x9E, 0x7F,
-                        0x60, 0x00              )
+[byte[]]$Signature = @( 0x74, 0x00,                                # JZ   0x11
+                        0x49, 0x8B, 0x07,                          # MOV  RAX,R15
+                        0xBA, 0x00, 0x00, 0x00, 0x00,              # MOV  RDX,0x3
+                        0x49, 0x8B, 0xCF,                          # MOV  RCX,R15
+                        0xFF, 0x90, 0x00, 0x00, 0x00, 0x00,        # CALL [RAX+0xF8]
+                        0x40, 0x88, 0xB3, 0x30, 0x01, 0x00, 0x00 ) # MOV  [RBX+0x130],SIL
 
-$SignatureOffset = -0x01 # Patch offset of signature
-$OriginalByte    =  0x75 # JNZ instruction
-$PatchedByte     =  0xEB # JMP instruction
+$SignatureOffset   = 0x32 # Patch offset of signature
+$OriginalOpcode    = 0x75 # JNZ instruction
+$PatchedOpcode     = 0xEB # JMP instruction
 
 function Timestamp{
     param([string[]]$Task = "Stamp")
@@ -60,6 +63,7 @@ for($i=0; $i -lt $ClientDLL_ByteLength; $i++){
 
     $Match = $True
     for($j=1; $j -lt $Signature_ByteLength; $j++){
+        if($Signature[$j] -eq 0x00){ continue } # 0x00 used as wildcard opcode byte
         if($ClientDLL[$i+$j] -ne $Signature[$j]){
             $Match = $False
             break
@@ -79,9 +83,9 @@ if(!$Offset){
     return
 }
 
-if($ClientDLL[$Offset] -eq $OriginalByte){
+if($ClientDLL[$Offset] -eq $OriginalOpcode){
     Write-Host "$(Timestamp)Non-patched file" -ForegroundColor Green
-}elseif($ClientDLL[$Offset] -eq $PatchedByte){
+}elseif($ClientDLL[$Offset] -eq $PatchedOpcode){
     Write-Host "$(Timestamp)Already patched - Exiting" -ForegroundColor Yellow
     return
 }else{
@@ -92,9 +96,9 @@ if($ClientDLL[$Offset] -eq $OriginalByte){
 $ClientDLL_Patched_Path = "$($ClientDLL_Path).patched"
 
 Write-Host "$(Timestamp)Creating patched version" -ForegroundColor Green
-Write-Host "`tByte at offset: $("0x{0:X2}" -f $ClientDLL[$Offset])"
-Write-Host "`tPatched byte: $("0x{0:X2}" -f $PatchedByte)"
-$ClientDLL[$Offset] = $PatchedByte
+Write-Host "`tFound opcode: $("0x{0:X2}" -f $ClientDLL[$Offset])"
+Write-Host "`tPatch opcode: $("0x{0:X2}" -f $PatchedOpcode)"
+$ClientDLL[$Offset] = $PatchedOpcode
 [System.IO.File]::WriteAllBytes($ClientDLL_Patched_Path, $ClientDLL)
 
 Write-Host "$(Timestamp)Backing up original file" -ForegroundColor Green
