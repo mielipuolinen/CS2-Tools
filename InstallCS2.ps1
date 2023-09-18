@@ -80,7 +80,6 @@ try{
     Get-Job -Name "InstallChoco" -EA SilentlyContinue | Stop-Job | Remove-Job *>$null
 }
 
-Exit
 ### Install Python
 
 try{
