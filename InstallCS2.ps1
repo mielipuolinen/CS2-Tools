@@ -280,7 +280,6 @@ try{
 }
 
 ### Patch Client
-
 $PatchTool = @"
 import os
 def read_file(filename):
@@ -308,7 +307,7 @@ if __name__=='__main__':main()
 try{
     Write-Host "Patching Client"
     $ClientDLLDirPath = "$($CS2InstallDirPath)\game\csgo\bin\win64"
-    $PatchTool | Out-File "$($ClientDLLDirPath)\patch.py"
+    $PatchTool | Set-Content -Encoding UTF8 "$($ClientDLLDirPath)\patch.py"
 
     Start-Job -Name "ClientPatcher" -ScriptBlock {
         Set-Location $using:ClientDLLDirPath
