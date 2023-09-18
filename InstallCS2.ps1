@@ -10,21 +10,22 @@ Write-Host "This will install PowerShell Chocolatey, Python 3 and SteamCTL if no
 
 Write-Host "`nConfigure"
 
-Write-Host "`nProvide directory path for the installation."
+Write-Host "`nProvide a directory path for the installation."
 Write-Host "Default: C:\Temp\CS2"
 $CS2InstallDirPath = "C:\Temp\CS2"
 $Response = Read-Host -Prompt "Installation Path"
 if($Response){ $CS2InstallDirPath = $Response }
-Write-Host "Installation Path: $($CS2InstallDirPath)"
+Write-Host "Set Installation Path to $($CS2InstallDirPath)"
 
 Write-Host "`nProvide the amount of downloader threads."
-Write-Host "Default: 20"
+Write-Host "Default: 20, Min: 6"
 Write-Host "Default value seems to be the most optimal: the highest downloading speed and the least CPU usage."
 Write-Host "NOTE: Try halving this value if you're having performance issues during the download."
 $Threads = 20
 $Response = Read-Host -Prompt "Downloader threads"
 if($Response){ $Threads = $Response }
-Write-Host "Downloader Threads: $($Threads)"
+if($Threads -lt 6){ $Threads = 6 }
+Write-Host "Set Downloader Thread Count to $($Threads)"
 
 # There shouldn't be any reasons to change these:
 $URI_DepotKeysJSON = "https://raw.githubusercontent.com/mielipuolinen/CS2-Tools/main/Depot%20Files/Depot%20Keys.json"
@@ -38,7 +39,7 @@ $ScriptStartTime = Get-Date
 try{
     Write-Host "CS2 Installation Directory"
     Write-Host "`t$CS2InstallDirPath"
-    if(!(Test-Path $CS2InstallDirPath)){ New-Item -ItemType Directory -Path $CS2InstallDirPath }
+    if(!(Test-Path $CS2InstallDirPath)){ New-Item -ItemType Directory -Path $CS2InstallDirPath | Out-Null }
 }catch{
     Write-Host "ERROR: $_"
     Return
@@ -218,7 +219,6 @@ try{
 try{
     Write-Host "CS2 Downloader"
     Write-Host "`tCTRL+C to Exit"
-    Write-Host "`tNote: In case of high CPU usage, try halving the threads parameter's value."
     Write-Progress -Activity "Downloader" -Status "Starting threads..."
 
     $List = steamctl depot list -f $Depot_Main | Sort-Object {Get-Random}
