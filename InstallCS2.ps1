@@ -2,31 +2,35 @@
 .SYNOPSIS
 Download & Install Counter-Strike 2
 .EXAMPLE
-Set-ExecutionPolicy Bypass -Scope Process -Force; iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)} -InstallDir 'C:\temp\CS2' -Threads 20"
+Set-ExecutionPolicy Bypass -Scope Process -Force; iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
 #>
 
-[CmdletBinding()]
-Param(
-    [Parameter(HelpMessage="Install directory for CS2, e.g. `"C:\temp\CS2`"")]
-    [ValidateNotNullOrEmpty()] [Alias("InstallDir")]
-    [String] $CS2InstallDirPath = "C:\Temp\CS2",
+Write-Host "`nDOWNLOAD & INSTALL COUNTER-STRIKE 2"
+Write-Host "This will install PowerShell Chocolatey, Python 3 and SteamCTL if not present."
 
-    # 20 seems to be optimal - highest download speed with least overhead
-    # If the downloader causes CPU freezing, try halving the number
-    [Parameter(HelpMessage="Downloader threads, e.g. 20.")]
-    [ValidateNotNullOrEmpty()]
-    [Int] $Threads = 20,
+Write-Host "`nConfigure"
 
-    [Parameter(HelpMessage="Likely no reason to change.")]
-    [ValidateNotNullOrEmpty()]
-    [String] $URI_DepotKeysJSON = "https://raw.githubusercontent.com/mielipuolinen/CS2-Tools/main/Depot%20Files/Depot%20Keys.json",
+Write-Host "`nProvide directory path for the installation."
+Write-Host "Default: C:\Temp\CS2"
+$CS2InstallDirPath = "C:\Temp\CS2"
+$Response = Read-Host -Prompt "Installation Path"
+if($Response){ $CS2InstallDirPath = $Response }
+Write-Host "Installation Path: $($CS2InstallDirPath)"
 
-    [Parameter(HelpMessage="Likely no reason to change.")]
-    [ValidateNotNullOrEmpty()]
-    [String] $URI_DepotFilesJSON = "https://github.com/mielipuolinen/CS2-Tools/raw/main/Depot%20Files/Depot%20Files.json"
-)
+Write-Host "`nProvide the amount of downloader threads."
+Write-Host "Default: 20"
+Write-Host "Default value seems to be the most optimal: the highest downloading speed and the least CPU usage."
+Write-Host "NOTE: Try halving this value if you're having performance issues during the download."
+$Threads = 20
+$Response = Read-Host -Prompt "Downloader threads"
+if($Response){ $Threads = $Response }
+Write-Host "Downloader Threads: $($Threads)"
 
-Write-Host "`nLaunching CS2 Downloader Tool`n---`n"
+# There shouldn't be any reasons to change these:
+$URI_DepotKeysJSON = "https://raw.githubusercontent.com/mielipuolinen/CS2-Tools/main/Depot%20Files/Depot%20Keys.json"
+$URI_DepotFilesJSON = "https://github.com/mielipuolinen/CS2-Tools/raw/main/Depot%20Files/Depot%20Files.json"
+
+Write-Host "`nStarting...`n"
 $ScriptStartTime = Get-Date
 
 ### Create CS2 Install Directory
@@ -39,6 +43,8 @@ try{
     Write-Host "ERROR: $_"
     Return
 }
+
+Exit
 
 ### Install Chocolatey
 
