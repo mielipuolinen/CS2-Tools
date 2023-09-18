@@ -77,16 +77,17 @@ try{
     Write-Host "ERROR: $_"
     Return
 }finally{
-    Get-Job -Name "InstallChoco" | Stop-Job | Remove-Job *>$null
+    Get-Job -Name "InstallChoco" -EA SilentlyContinue | Stop-Job | Remove-Job *>$null
 }
 
+Exit
 ### Install Python
 
 try{
     Write-Host "Install Python"
 
     try{
-        if(Get-Command -Name "py" -ErrorAction Stop){ $IsInstalled = $True }
+        if(Get-Command -Name "py" -EA Stop){ $IsInstalled = $True }
     }catch{
         $IsInstalled = $False
     }
@@ -114,7 +115,7 @@ try{
     Write-Host "ERROR: $_"
     Return
 }finally{
-    Get-Job -Name "InstallPython" | Stop-Job | Remove-Job *>$null
+    Get-Job -Name "InstallPython" -EA SilentlyContinue  | Stop-Job | Remove-Job *>$null
 }
 
 ### Install SteamCTL
@@ -150,7 +151,7 @@ try{
     Write-Host "ERROR: $_"
     Return
 }finally{
-    Get-Job -Name "InstallSteamCTL" | Stop-Job | Remove-Job *>$null
+    Get-Job -Name "InstallSteamCTL" -EA SilentlyContinue  | Stop-Job | Remove-Job *>$null
 }
 
 ### Get Decryption Keys
@@ -276,7 +277,7 @@ try{
     Return
 }finally{
     Write-Progress -Activity "Downloader" -Status "Exiting, please wait..."
-    Get-Job -Name "DownloadCS2*" | Stop-Job | Remove-Job *>$null
+    Get-Job -Name "DownloadCS2*" -EA SilentlyContinue  | Stop-Job | Remove-Job *>$null
 }
 
 ### Patch Client
@@ -315,21 +316,33 @@ try{
         py "patch.py"
     } | Out-Null
 
+    while(((Get-Job -Name "ClientPatcher").JobStateInfo | Where-Object State -eq "Running").count -gt 0){
+        Start-Sleep -Seconds 1
+    }
+
+    Write-Host "`tOK"
+
 }catch{
     Write-Host "ERROR: $_"
     Return
+}finally{
+    Get-Job -Name "ClientPatcher" -EA SilentlyContinue  | Stop-Job | Remove-Job *>$null
 }
 
 ### Create CS2 Shortcut
 
 try{
+
     Write-Host "Creating Shortcut"
+
     $WshShell = New-Object -comObject WScript.Shell
     $Shortcut = $WshShell.CreateShortcut("$($CS2InstallDirPath)\Launch CS2.lnk")
     $Shortcut.TargetPath = "$($CS2InstallDirPath)\game\bin\win64\cs2.exe"
     $Shortcut.Arguments = "-insecure +showconsole +cl_join_advertise 2 +hostname_in_client_status true"
     $Shortcut.Save()
+
     Write-Host "`tOK"
+
 }catch{
     Write-Host "ERROR: $_"
     Return
