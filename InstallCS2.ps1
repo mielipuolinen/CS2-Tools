@@ -8,8 +8,8 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iex "&{$(irm https://github.co
 [CmdletBinding()]
 Param(
     [Parameter(HelpMessage="Install directory for CS2, e.g. `"C:\temp\CS2`"")]
-    [ValidateNotNullOrEmpty()]
-    [String] $InstallDir = "C:\Temp\CS2",
+    [ValidateNotNullOrEmpty()] [Alias("InstallDir")]
+    [String] $CS2InstallDirPath = "C:\Temp\CS2",
 
     # 20 seems to be optimal - highest download speed with least overhead
     # If the downloader causes CPU freezing, try halving the number
