@@ -44,8 +44,6 @@ try{
     Return
 }
 
-Exit
-
 ### Install Chocolatey
 
 try{
