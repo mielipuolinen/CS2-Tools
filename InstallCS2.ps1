@@ -1,16 +1,30 @@
-# Launching:
-# Set-ExecutionPolicy Bypass -Scope Process -Force; iex "&{$(irm `"...\InstallCS2.ps1`"")}"
+<#
+.SYNOPSIS
+Download & Install Counter-Strike 2
+.EXAMPLE
+Set-ExecutionPolicy Bypass -Scope Process -Force; iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)} -InstallDir 'C:\temp\CS2' -Threads 20"
+#>
 
-# Installation directory for CS2
-$CS2InstallDirPath = "C:\Temp\CS2"
+[CmdletBinding()]
+Param(
+    [Parameter(HelpMessage="Install directory for CS2, e.g. `"C:\temp\CS2`"")]
+    [ValidateNotNullOrEmpty()]
+    [String] $InstallDir = "C:\Temp\CS2",
 
-# 20 seems to be optimal - highest download speed with least overhead
-# If the downloader causes CPU freezing, try halving the number
-$DownloaderThreads = 20
+    # 20 seems to be optimal - highest download speed with least overhead
+    # If the downloader causes CPU freezing, try halving the number
+    [Parameter(HelpMessage="Downloader threads, e.g. 20.")]
+    [ValidateNotNullOrEmpty()]
+    [Int] $Threads = 20,
 
-# Probably no reasons to change
-$URI_DepotKeysJSON = "https://raw.githubusercontent.com/mielipuolinen/CS2-Tools/main/Depot%20Files/Depot%20Keys.json"
-$URI_DepotFilesJSON = "https://github.com/mielipuolinen/CS2-Tools/raw/main/Depot%20Files/Depot%20Files.json"
+    [Parameter(HelpMessage="Likely no reason to change.")]
+    [ValidateNotNullOrEmpty()]
+    [String] $URI_DepotKeysJSON = "https://raw.githubusercontent.com/mielipuolinen/CS2-Tools/main/Depot%20Files/Depot%20Keys.json",
+
+    [Parameter(HelpMessage="Likely no reason to change.")]
+    [ValidateNotNullOrEmpty()]
+    [String] $URI_DepotFilesJSON = "https://github.com/mielipuolinen/CS2-Tools/raw/main/Depot%20Files/Depot%20Files.json"
+)
 
 Write-Host "`nLaunching CS2 Downloader Tool`n---`n"
 $ScriptStartTime = Get-Date
@@ -59,7 +73,7 @@ try{
     Write-Host "ERROR: $_"
     Return
 }finally{
-    Get-Job -Name "InstallChoco" | Stop-Job | Remove-Job
+    Get-Job -Name "InstallChoco" | Stop-Job | Remove-Job *>$null
 }
 
 ### Install Python
@@ -96,7 +110,7 @@ try{
     Write-Host "ERROR: $_"
     Return
 }finally{
-    Get-Job -Name "InstallPython" | Stop-Job | Remove-Job
+    Get-Job -Name "InstallPython" | Stop-Job | Remove-Job *>$null
 }
 
 ### Install SteamCTL
@@ -132,7 +146,7 @@ try{
     Write-Host "ERROR: $_"
     Return
 }finally{
-    Get-Job -Name "InstallSteamCTL" | Stop-Job | Remove-Job
+    Get-Job -Name "InstallSteamCTL" | Stop-Job | Remove-Job *>$null
 }
 
 ### Get Decryption Keys
@@ -200,6 +214,7 @@ try{
 try{
     Write-Host "CS2 Downloader"
     Write-Host "`tCTRL+C to Exit"
+    Write-Host "`tNote: In case of high CPU usage, try halving the threads parameter's value."
     Write-Progress -Activity "Downloader" -Status "Starting threads..."
 
     $List = steamctl depot list -f $Depot_Main | Sort-Object {Get-Random}
@@ -207,11 +222,12 @@ try{
     $FileCount = $List.count
     if($FileCount -eq 0){ Throw "Failed to get a list of files." }
 
-    $Threads = $DownloaderThreads - $Depot_Others.count
-    $FilesPerThread = [math]::Ceiling( $FileCount / $Threads )
+    $DownloaderThreads = $Threads - $Depot_Others.count
+    $FilesPerThread = [math]::Ceiling( $FileCount / $DownloaderThreads )
     $StartIndex = 0
+    $TimeStart = Get-Date
 
-    for($i = 1; $i -le $Threads; $i++){
+    for($i = 1; $i -le $DownloaderThreads; $i++){
         $Group = $List | Select-Object -Skip $StartIndex -First $FilesPerThread
         $Group = $Group | Sort-Object { if($_ -like "*.vpk"){0}else{1} }
         $Regex = ( $Group | ForEach-Object{[regex]::Escape($_)} ) -join "|"
@@ -256,7 +272,7 @@ try{
     Return
 }finally{
     Write-Progress -Activity "Downloader" -Status "Exiting, please wait..."
-    Get-Job -Name "DownloadCS2*" | Stop-Job | Remove-Job
+    Get-Job -Name "DownloadCS2*" | Stop-Job | Remove-Job *>$null
 }
 
 ### Patch Client
