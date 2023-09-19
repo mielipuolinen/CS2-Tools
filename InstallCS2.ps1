@@ -221,7 +221,15 @@ try{
     Write-Host "`tCTRL+C to Exit"
     Write-Progress -Activity "Downloader" -Status "Starting threads..."
 
-    $List = steamctl depot list -f $Depot_Main | Sort-Object {Get-Random}
+    $RawList = steamctl depot list -f $Depot_Main
+
+    $List = @()
+    
+    foreach($FileName in $RawList){
+        $List += ($FileName -split "\\")[-1]
+    }
+
+    $List = $List | Select-Object -Unique | Sort-Object {Get-Random}
 
     $FileCount = $List.count
     if($FileCount -eq 0){ Throw "Failed to get a list of files." }
@@ -236,9 +244,15 @@ try{
         $Group = $Group | Sort-Object { if($_ -like "*.vpk"){0}else{1} }
         $Regex = ( $Group | ForEach-Object{[regex]::Escape($_)} ) -join "|"
 
-        Start-Job -Name "DownloadCS2_Main_t$i" -ScriptBlock {
-            steamctl depot download -f $using:Depot_Main -o $using:CS2InstallDirPath -re $using:Regex `
-            --skip-licenses --skip-login 
+        $JobName = "DownloadCS2_Main_t$i"
+        Start-Job -Name $JobName -ScriptBlock {
+            $CS2InstallDirPath = $using:CS2InstallDirPath
+            $JobName = $using:JobName
+            $Regex = $using:Regex
+            $Depot_Main = $using:Depot_Main
+            #"steamctl depot download -f $($Depot_Main) -o $($CS2InstallDirPath) -re $($Regex)" >> "$($CS2InstallDirPath)\$($JobName).log"
+            steamctl depot download -f $Depot_Main -o $CS2InstallDirPath -re $Regex `
+            --skip-licenses --skip-login # *>> "$($CS2InstallDirPath)\$($JobName).log"
         } | Out-Null
 
         $StartIndex += $FilesPerThread
@@ -257,6 +271,7 @@ try{
         $ActiveDownloads = ((Get-Job -Name "DownloadCS2*").JobStateInfo | Where-Object State -eq "Running").count
         $CurrentFileCount = (Get-ChildItem $CS2InstallDirPath -Recurse -File).count - $ActiveDownloads
         $Percentage = $CurrentFileCount / $FileCount * 100 
+        if($Percentage -gt 100){$Percentage = 100}
         $Status = "Files: $CurrentFileCount/$FileCount | Active Threads: $ActiveDownloads"
         Write-Progress -Activity "Downloader" -Status $Status -PercentComplete $Percentage
         Start-Sleep -Seconds 1
