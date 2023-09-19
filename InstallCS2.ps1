@@ -18,13 +18,13 @@ if($Response){ $CS2InstallDirPath = $Response }
 Write-Host "Set Installation Path to $($CS2InstallDirPath)"
 
 Write-Host "`nProvide the amount of downloader threads."
-Write-Host "Default: 20, Min: 6"
+Write-Host "Default: 20, Min: 3"
 Write-Host "Default value seems to be the most optimal: the highest downloading speed and the least CPU usage."
 Write-Host "NOTE: Try halving this value if you're having performance issues during the download."
 $Threads = 20
 $Response = Read-Host -Prompt "Downloader threads"
 if($Response){ $Threads = $Response }
-if($Threads -lt 6){ $Threads = 6 }
+if($Threads -lt 3){ $Threads = 3 }
 Write-Host "Set Downloader Thread Count to $($Threads)"
 
 # There shouldn't be any reasons to change these:
@@ -234,7 +234,7 @@ try{
     $FileCount = $List.count
     if($FileCount -eq 0){ Throw "Failed to get a list of files." }
 
-    $DownloaderThreads = $Threads - $Depot_Others.count
+    $DownloaderThreads = $Threads # - $Depot_Others.count
     $FilesPerThread = [math]::Ceiling( $FileCount / $DownloaderThreads )
     $StartIndex = 0
     $TimeStart = Get-Date
@@ -258,23 +258,38 @@ try{
         $StartIndex += $FilesPerThread
     }
 
-    $Depot_Others_Count = 0
     foreach($Depot in $Depot_Others){
         $FileCount += (steamctl depot list -f $Depot).count
-        $Depot_Others_Count += 1
-        Start-Job -Name "DownloadCS2_Depot-$($Depot_Others_Count)" -ScriptBlock {
-            steamctl depot download -f $using:Depot -o $using:CS2InstallDirPath --skip-licenses --skip-login
-        } | Out-Null
     }
 
+    $Depot_Others_WaitingToDownload = $True
+    $Depot_Others_Downloading = 0
+
     while(((Get-Job -Name "DownloadCS2*").JobStateInfo | Where-Object State -eq "Running").count -gt 0){
+
         $ActiveDownloads = ((Get-Job -Name "DownloadCS2*").JobStateInfo | Where-Object State -eq "Running").count
+
+        if($Depot_Others_WaitingToDownload -and $ActiveDownloads -lt $Threads){
+            Start-Job -Name "DownloadCS2_Depot-$($Depot_Others_Downloading+1)" -ScriptBlock {
+                $Depot_Others = $using:Depot_Others
+                $Depot_Others_Downloading = $using:Depot_Others_Downloading
+                steamctl depot download -f $Depot_Others[$Depot_Others_Downloading] -o $using:CS2InstallDirPath --skip-licenses --skip-login
+            } | Out-Null
+
+            $Depot_Others_Downloading += 1
+            if($Depot_Others_Downloading -eq $Depot_Others.count){
+                $Depot_Others_WaitingToDownload = $False
+            }
+        }
+
         $CurrentFileCount = (Get-ChildItem $CS2InstallDirPath -Recurse -File).count - $ActiveDownloads
         $Percentage = $CurrentFileCount / $FileCount * 100 
         if($Percentage -gt 100){$Percentage = 100}
+
         $Status = "Files: $CurrentFileCount/$FileCount | Active Threads: $ActiveDownloads"
         Write-Progress -Activity "Downloader" -Status $Status -PercentComplete $Percentage
         Start-Sleep -Seconds 1
+
     }
 
     $TimeDiff = ((Get-Date) - $TimeStart).TotalSeconds
@@ -326,6 +341,7 @@ try{
 
     Start-Job -Name "ClientPatcher" -ScriptBlock {
         Set-Location $using:ClientDLLDirPath
+        Copy-Item -Path "client.dll" -Destination "client.dll.orig" | Out-Null
         py "patch.py"
     } | Out-Null
 
