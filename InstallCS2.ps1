@@ -2,30 +2,76 @@
 .SYNOPSIS
 Download & Install Counter-Strike 2
 .EXAMPLE
-Set-ExecutionPolicy Bypass -Scope Process -Force; iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
+Set-ExecutionPolicy Bypass -Scope Process -Force; `
+iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
+.EXAMPLE
+$InstallCS2_Unattended = $True;
+$InstallCS2_DirPath = "C:\CS2"; `
+$InstallCS2_Threads = 10;
+$InstallCS2_PatchClient = $False; `
+Set-ExecutionPolicy Bypass -Scope Process -Force; `
+iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
 #>
 
 Write-Host "`nDOWNLOAD & INSTALL COUNTER-STRIKE 2"
 Write-Host "This will install PowerShell Chocolatey, Python 3 and SteamCTL if not present."
 
+$Unattended = $False
+$CS2InstallDirPath = $False
+$Threads = $False
+$PatchClient = $True
+
+if(Get-Variable -Name "InstallCS2_Unattended" -EA SilentlyContinue){
+
+    $Unattended = $InstallCS2_Unattended
+    Remove-Variable $InstallCS2_Unattended
+
+    if(Get-Variable -Name "InstallCS2_DirPath" -EA SilentlyContinue){
+        $CS2InstallDirPath = $InstallCS2_DirPath
+        Remove-Variable $InstallCS2_DirPath
+    }
+
+    if(Get-Variable -Name "InstallCS2_Threads" -EA SilentlyContinue){
+        $Threads = $InstallCS2_Threads
+        Remove-Variable $InstallCS2_Threads
+    }
+
+    if(Get-Variable -Name "InstallCS2_PatchClient" -EA SilentlyContinue){
+        $PatchClient = $InstallCS2_PatchClient
+        Remove-Variable $InstallCS2_PatchClient
+    }
+}
+
 Write-Host "`nConfigure"
+if($Unattended){
 
-Write-Host "`nProvide a directory path for the installation."
-Write-Host "Default: C:\Temp\CS2"
-$CS2InstallDirPath = "C:\Temp\CS2"
-$Response = Read-Host -Prompt "Installation Path"
-if($Response){ $CS2InstallDirPath = $Response }
-Write-Host "Set Installation Path to $($CS2InstallDirPath)"
+    if(!$CS2InstallDirPath){ $CS2InstallDirPath = "C:\Temp\CS2" }
+    if(!$Threads){ $Threads = 20 }
 
-Write-Host "`nProvide the amount of downloader threads."
-Write-Host "Default: 20, Min: 3"
-Write-Host "Default value seems to be the most optimal: the highest downloading speed and the least CPU usage."
-Write-Host "NOTE: Try halving this value if you're having performance issues during the download."
-$Threads = 20
-$Response = Read-Host -Prompt "Downloader threads"
-if($Response){ $Threads = $Response }
-if($Threads -lt 3){ $Threads = 3 }
-Write-Host "Set Downloader Thread Count to $($Threads)"
+    Write-Host "`tUnattended mode detected"
+    Write-Host "`tInstallation Path: $($CS2InstallDirPath)"
+    Write-Host "`tDownloader Thread Count: $($Threads)"
+
+}else{
+
+    Write-Host "`nProvide a directory path for the installation."
+    Write-Host "Default: C:\Temp\CS2"
+    $CS2InstallDirPath = "C:\Temp\CS2"
+    $Response = Read-Host -Prompt "Installation Path"
+    if($Response){ $CS2InstallDirPath = $Response }
+    Write-Host "Set Installation Path to $($CS2InstallDirPath)"
+
+    Write-Host "`nProvide the amount of downloader threads."
+    Write-Host "Default: 20, Min: 3"
+    Write-Host "Default value seems to be the most optimal: the highest downloading speed and the least CPU usage."
+    Write-Host "NOTE: Try halving this value if you're having performance issues during the download."
+    $Threads = 20
+    [Int] $Response = Read-Host -Prompt "Downloader threads"
+    if($Response){ $Threads = $Response }
+    if($Threads -lt 3){ $Threads = 3 }
+    Write-Host "Set Downloader Thread Count to $($Threads)"
+
+}
 
 # There shouldn't be any reasons to change these:
 $URI_DepotKeysJSON = "https://raw.githubusercontent.com/mielipuolinen/CS2-Tools/main/Depot%20Files/Depot%20Keys.json"
@@ -250,9 +296,8 @@ try{
             $JobName = $using:JobName
             $Regex = $using:Regex
             $Depot_Main = $using:Depot_Main
-            #"steamctl depot download -f $($Depot_Main) -o $($CS2InstallDirPath) -re $($Regex)" >> "$($CS2InstallDirPath)\$($JobName).log"
             steamctl depot download -f $Depot_Main -o $CS2InstallDirPath -re $Regex `
-            --skip-licenses --skip-login # *>> "$($CS2InstallDirPath)\$($JobName).log"
+            --skip-licenses --skip-login
         } | Out-Null
 
         $StartIndex += $FilesPerThread
@@ -334,28 +379,30 @@ def main():file_path='client.dll';patch_file(file_path,bytearray([117,115,255,21
 if __name__=='__main__':main()
 "@
 
-try{
-    Write-Host "Patching Client"
-    $ClientDLLDirPath = "$($CS2InstallDirPath)\game\csgo\bin\win64"
-    $PatchTool | Set-Content -Encoding UTF8 "$($ClientDLLDirPath)\patch.py"
+if($PatchClient){
+    try{
+        Write-Host "Patching Client"
+        $ClientDLLDirPath = "$($CS2InstallDirPath)\game\csgo\bin\win64"
+        $PatchTool | Set-Content -Encoding UTF8 "$($ClientDLLDirPath)\patch.py"
 
-    Start-Job -Name "ClientPatcher" -ScriptBlock {
-        Set-Location $using:ClientDLLDirPath
-        Copy-Item -Path "client.dll" -Destination "client.dll.orig" | Out-Null
-        py "patch.py"
-    } | Out-Null
+        Start-Job -Name "ClientPatcher" -ScriptBlock {
+            Set-Location $using:ClientDLLDirPath
+            Copy-Item -Path "client.dll" -Destination "client.dll.orig" | Out-Null
+            py "patch.py"
+        } | Out-Null
 
-    while(((Get-Job -Name "ClientPatcher").JobStateInfo | Where-Object State -eq "Running").count -gt 0){
-        Start-Sleep -Seconds 1
+        while(((Get-Job -Name "ClientPatcher").JobStateInfo | Where-Object State -eq "Running").count -gt 0){
+            Start-Sleep -Seconds 1
+        }
+
+        Write-Host "`tOK"
+
+    }catch{
+        Write-Host "ERROR: $_"
+        Return
+    }finally{
+        Get-Job -Name "ClientPatcher" -EA SilentlyContinue  | Stop-Job | Remove-Job *>$null
     }
-
-    Write-Host "`tOK"
-
-}catch{
-    Write-Host "ERROR: $_"
-    Return
-}finally{
-    Get-Job -Name "ClientPatcher" -EA SilentlyContinue  | Stop-Job | Remove-Job *>$null
 }
 
 ### Create CS2 Shortcut
