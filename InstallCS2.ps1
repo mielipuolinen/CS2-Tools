@@ -14,7 +14,7 @@ iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)
 #>
 
 # $PSStyle only available in PS7
-    # - Set the progress view to be identical with PS5
+# - Set the progress view to be identical with PS5
 if(Test-Path variable:PSStyle){
     $PSStyle.Progress.View = "Classic"
 }
