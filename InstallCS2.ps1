@@ -24,21 +24,21 @@ $PatchClient = $True
 if(Get-Variable -Name "InstallCS2_Unattended" -EA SilentlyContinue){
 
     $Unattended = $InstallCS2_Unattended
-    Remove-Variable -Name "InstallCS2_Unattended"
+    Remove-Variable -Name "InstallCS2_Unattended" -Scope "Global"
 
     if(Get-Variable -Name "InstallCS2_DirPath" -EA SilentlyContinue){
         $CS2InstallDirPath = $InstallCS2_DirPath
-        Remove-Variable -Name "InstallCS2_DirPath"
+        Remove-Variable -Name "InstallCS2_DirPath" -Scope "Global"
     }
 
     if(Get-Variable -Name "InstallCS2_Threads" -EA SilentlyContinue){
         $Threads = $InstallCS2_Threads
-        Remove-Variable -Name "InstallCS2_Threads"
+        Remove-Variable -Name "InstallCS2_Threads" -Scope "Global"
     }
 
     if(Get-Variable -Name "InstallCS2_PatchClient" -EA SilentlyContinue){
         $PatchClient = $InstallCS2_PatchClient
-        Remove-Variable -Name "InstallCS2_PatchClient"
+        Remove-Variable -Name "InstallCS2_PatchClient" -Scope "Global"
     }
 }
 
