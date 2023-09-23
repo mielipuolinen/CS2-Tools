@@ -5,9 +5,9 @@ Download & Install Counter-Strike 2
 Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
 .EXAMPLE
-$InstallCS2_Unattended = $True;
+$InstallCS2_Unattended = $True; `
 $InstallCS2_DirPath = "C:\CS2"; `
-$InstallCS2_Threads = 10;
+$InstallCS2_Threads = 10; `
 $InstallCS2_PatchClient = $False; `
 Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
