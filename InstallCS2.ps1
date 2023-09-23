@@ -13,6 +13,12 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
 #>
 
+# $PSStyle only available in PS7
+    # - Set the progress view to be identical with PS5
+if(Test-Path variable:PSStyle){
+    $PSStyle.Progress.View = "Classic"
+}
+
 Write-Host "`nDOWNLOAD & INSTALL COUNTER-STRIKE 2"
 Write-Host "This will install PowerShell Chocolatey, Python 3 and SteamCTL if not present."
 
@@ -265,12 +271,6 @@ try{
 try{
     Write-Host "CS2 Downloader"
     Write-Host "`tCTRL+C to Exit"
-
-    # $PSStyle only available in PS7
-    # - Set the progress view to be identical with PS5
-    if(Test-Path variable:PSStyle){
-        $PSStyle.Progress.View = "Classic"
-    }
 
     Write-Progress -Activity "Downloader" -Status "Starting threads..."
 
