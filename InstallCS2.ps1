@@ -48,7 +48,7 @@ if($Unattended){
     if(!$CS2InstallDirPath){ $CS2InstallDirPath = "C:\Temp\CS2" }
     if(!$Threads){ $Threads = 20 }
 
-    Write-Host "`tUnattended mode detected"
+    Write-Host "`tUnattended Mode Detected"
     Write-Host "`tInstallation Path: $($CS2InstallDirPath)"
     Write-Host "`tDownloader Thread Count: $($Threads)"
 
@@ -265,6 +265,13 @@ try{
 try{
     Write-Host "CS2 Downloader"
     Write-Host "`tCTRL+C to Exit"
+
+    # $PSStyle only available in PS7
+    # - Set the progress view to be identical with PS5
+    if(Test-Path variable:PSStyle){
+        $PSStyle.Progress.View = "Classic"
+    }
+
     Write-Progress -Activity "Downloader" -Status "Starting threads..."
 
     $RawList = steamctl depot list -f $Depot_Main
