@@ -5,9 +5,9 @@ Download & Install Counter-Strike 2
 Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
 .EXAMPLE
-$InstallCS2_Unattended = $True; `
+$InstallCS2_Unattended = $True;
 $InstallCS2_DirPath = "C:\CS2"; `
-$InstallCS2_Threads = 10; `
+$InstallCS2_Threads = 10;
 $InstallCS2_PatchClient = $False; `
 Set-ExecutionPolicy Bypass -Scope Process -Force; `
 iex "&{$(irm https://github.com/mielipuolinen/CS2-Tools/raw/main/InstallCS2.ps1)}"
@@ -24,21 +24,21 @@ $PatchClient = $True
 if(Get-Variable -Name "InstallCS2_Unattended" -EA SilentlyContinue){
 
     $Unattended = $InstallCS2_Unattended
-    Remove-Variable $InstallCS2_Unattended
+    Remove-Variable -Name "InstallCS2_Unattended"
 
     if(Get-Variable -Name "InstallCS2_DirPath" -EA SilentlyContinue){
         $CS2InstallDirPath = $InstallCS2_DirPath
-        Remove-Variable $InstallCS2_DirPath
+        Remove-Variable -Name "InstallCS2_DirPath"
     }
 
     if(Get-Variable -Name "InstallCS2_Threads" -EA SilentlyContinue){
         $Threads = $InstallCS2_Threads
-        Remove-Variable $InstallCS2_Threads
+        Remove-Variable -Name "InstallCS2_Threads"
     }
 
     if(Get-Variable -Name "InstallCS2_PatchClient" -EA SilentlyContinue){
         $PatchClient = $InstallCS2_PatchClient
-        Remove-Variable $InstallCS2_PatchClient
+        Remove-Variable -Name "InstallCS2_PatchClient"
     }
 }
 
